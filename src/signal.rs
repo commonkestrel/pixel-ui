@@ -24,11 +24,26 @@ impl Context {
     }
 
     fn try_with<T: 'static, U>(&self, id: SignalId, f: impl FnOnce(&T) -> U) -> U {
-        f(self.signals.borrow()[id.0].signal.borrow().downcast_ref::<T>().expect("should be able to downcast signal type"))
+        f(self.signals.borrow()[id.0]
+            .signal
+            .borrow()
+            .downcast_ref::<T>()
+            .expect("should be able to downcast signal type"))
     }
 
-    fn get_value(&self, subscription: SignalId) -> Option<Rc<RefCell<dyn Any>>> {
-        self.signals.borrow().get(subscription.0).map(|node| node.signal.clone())
+    fn get_value(&self, id: SignalId) -> Option<Rc<RefCell<dyn Any>>> {
+        self.signals
+            .borrow()
+            .get(id.0)
+            .map(|node| node.signal.clone())
+    }
+
+    pub fn update<T: 'static>(&self, id: SignalId, f: impl FnOnce(&T) -> T) {
+        let nodes = self.signals.borrow();
+        let mut value = nodes[id.0].signal.borrow_mut();
+
+        let update = f(value.downcast_ref().expect("should be able to downcast signal type"));
+        *value.downcast_mut().expect("should be able to downcast signal type") = update;
     }
 }
 
@@ -42,9 +57,10 @@ pub(crate) enum SignalState {
     Dirty,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WriteSignal<T> {
     id: SignalId,
-    _marker: PhantomData<T>
+    _marker: PhantomData<T>,
 }
 
 impl<T> WriteSignal<T> {
@@ -54,12 +70,15 @@ impl<T> WriteSignal<T> {
             _marker: PhantomData,
         }
     }
+}
 
+impl <T: 'static> WriteSignal<T> {
     pub fn set(&self, ctx: &Context, data: T) {
-        
+        ctx.update(self.id, |_| data);
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadSignal<T> {
     id: SignalId,
     _marker: PhantomData<T>,

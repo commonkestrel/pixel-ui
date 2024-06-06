@@ -6,7 +6,11 @@ use winit::{
     event::{ElementState, WindowEvent},
 };
 
-use crate::{element::Element, signal::{SignalId, SignalState}, util::IVec2};
+use crate::{
+    element::Element,
+    signal::{SignalId, SignalState},
+    util::IVec2,
+};
 
 pub struct Window {
     mouse_position: IVec2,
@@ -15,7 +19,7 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(win: winit::window::Window) -> Self {
+    pub fn new() -> Self {
         Self {
             elements: Vec::new(),
             focused: None,
@@ -23,8 +27,16 @@ impl Window {
         }
     }
 
+    pub fn run(&mut self) {
+        
+    }
+
     pub fn query_class<'a>(&'a self, target: &'a str) -> impl Iterator<Item = &'a Element> {
         self.elements.iter().filter(|el| el.contains_class(target))
+    }
+
+    pub fn insert_element<E: Into<Element>>(&mut self, el: E) {
+        self.elements.push(el.into());
     }
 
     pub fn update(&mut self, event: WindowEvent) {

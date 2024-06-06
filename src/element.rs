@@ -2,8 +2,8 @@ pub mod body;
 pub mod button;
 pub mod canvas;
 pub mod icon;
-pub mod text;
 pub mod span;
+pub mod text;
 
 use std::rc::Rc;
 
@@ -56,9 +56,28 @@ impl Element {
         }
     }
 
-    pub(crate) fn update(&mut self, ev: Event) {
-        self.inner.update(&ev);
-        self.handlers.handle(self, ev);
+    pub(crate) fn update(&mut self, event: Event) {
+        self.inner.update(&event);
+        match event {
+            Event::Key(ev) => self
+                .handlers
+                .key_handlers
+                .clone()
+                .into_iter()
+                .for_each(|handler| handler(self, ev)),
+            Event::Mouse(ev) => self
+                .handlers
+                .mouse_handlers
+                .clone()
+                .into_iter()
+                .for_each(|handler| handler(self, ev)),
+            Event::MouseMove(ev) => self
+                .handlers
+                .mouse_move_handlers
+                .clone()
+                .into_iter()
+                .for_each(|handler| handler(self, ev)),
+        }
     }
 
     pub fn set_hidden(&mut self, hidden: bool) {
@@ -99,7 +118,7 @@ impl Element {
     pub fn intersects(&self, target: IVec2) -> bool {
         match self.inner {
             ElementInner::Body(_) => true,
-            _ => self.get_bounding_box().intersects(target)
+            _ => self.get_bounding_box().intersects(target),
         }
     }
 }
@@ -156,17 +175,7 @@ struct Handlers {
 }
 
 impl Handlers {
-    fn handle(&self, event: Event) -> Vec< {
-        match event {
-            Event::Key(ev) => self.key_handlers.iter().clone(),
-            Event::Mouse(ev) => self
-                .mouse_handlers
-                .clone(),
-            Event::MouseMove(ev) => self
-                .mouse_move_handlers
-                .clone(),
-        }
-    }
+    fn handle(&self, event: Event) {}
 
     fn remove_handler(&mut self, id: HandlerId) {
         match id.ty {
