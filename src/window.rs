@@ -1,34 +1,52 @@
-use winit::{application::ApplicationHandler, event::WindowEvent};
+use std::{any::Any, cell::RefCell, rc::Rc};
 
-use crate::{component::Component, element::Element};
+use softbuffer::Surface;
+use winit::{
+    application::ApplicationHandler,
+    event::{ElementState, WindowEvent},
+};
 
-pub struct Window<E=()> {
-    win: winit::window::Window,
+use crate::{element::Element, signal::{SignalId, SignalState}, util::IVec2};
+
+pub struct Window {
+    mouse_position: IVec2,
+    focused: Option<ElementId>,
     elements: Vec<Element>,
-    selected: Option<usize>,
 }
 
-impl<E> Window<E> {
+impl Window {
     pub fn new(win: winit::window::Window) -> Self {
         Self {
-            win,
             elements: Vec::new(),
-            selected: None,
+            focused: None,
+            mouse_position: IVec2::default(),
         }
     }
 
-    pub fn query_class(&self, target: &str) -> () {
+    pub fn query_class<'a>(&'a self, target: &'a str) -> impl Iterator<Item = &'a Element> {
         self.elements.iter().filter(|el| el.contains_class(target))
     }
 
-    pub fn respond(&mut self, event: WindowEvent) -> Vec<E> {
+    pub fn update(&mut self, event: WindowEvent) {
         match event {
-            WindowEvent::MouseInput { device_id, state, button } => {
+            WindowEvent::MouseInput {
+                device_id,
+                state,
+                button,
+            } => {
                 for el in self.elements.iter_mut() {
-                    
+                    if el.intersects(self.mouse_position) {}
+                    match state {
+                        ElementState::Pressed => {}
+                        ElementState::Released => {}
+                    }
                 }
             }
             _ => {}
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct ElementId(usize);

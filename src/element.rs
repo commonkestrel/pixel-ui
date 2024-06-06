@@ -1,103 +1,184 @@
 pub mod body;
+pub mod button;
+pub mod canvas;
+pub mod icon;
+pub mod text;
+pub mod span;
+
+use std::rc::Rc;
 
 use body::Body;
+use icon::Icon;
 
-use crate::{component::Component, util::{BoundingBox, Vec2}};
+use crate::draw;
+use crate::event::{Event, KeyEvent, MouseEvent, MouseMoveEvent};
+use crate::signal::SignalId;
+use crate::util::{BoundingBox, IVec2, UVec2};
 
-pub struct Element<E> {
+pub struct Element {
     inner: ElementInner,
     classes: Vec<String>,
     hidden: bool,
-    offset: Vec2,
+    offset: IVec2,
+    z_index: usize,
+    handlers: Handlers,
+    subscriptions: Vec<SignalId>,
 }
 
-impl<E> Element<E> {
-    fn append_class(&mut self, class: String) {
+impl Element {
+    pub fn append_class(&mut self, class: String) {
         self.classes.push(class);
     }
-    
-    fn get_classes(&self) -> &[String] {
+
+    pub fn get_classes(&self) -> &[String] {
         &self.classes
     }
 
-    fn draw(&self, buf: &mut [u8], width: usize, height: usize) {
-        if !self.props.hidden {
-            let el = self.inner.draw();
+    pub fn get_z_index(&self) -> usize {
+        self.z_index
+    }
+
+    pub fn set_z_index(&mut self, z_index: usize) {
+        self.z_index = z_index;
+    }
+
+    fn draw(&self, buf: &mut [bool], width: usize, height: usize) {
+        if !self.hidden {
+            let (graphic, size) = self.inner.draw();
+
+            draw::write_all(
+                buf,
+                width,
+                height,
+                BoundingBox::from_size(self.offset, size),
+                graphic,
+            );
         }
     }
 
-    pub(crate) fn update(&mut self, events: Vec<Event>);
-    pub(crate) fn draw(&self, buf: &mut [u8], width: usize, height: usize);
-    
+    pub(crate) fn update(&mut self, ev: Event) {
+        self.inner.update(&ev);
+        self.handlers.handle(self, ev);
+    }
+
     pub fn set_hidden(&mut self, hidden: bool) {
         self.hidden = hidden;
     }
-    
-    pub fn set_offset(&mut self, offset: Vec2) {
+
+    pub fn set_offset(&mut self, offset: IVec2) {
         self.offset = offset;
     }
 
-    pub fn with_offset(mut self, offset: Vec2) -> Self {
+    pub fn with_offset(mut self, offset: IVec2) -> Self {
         self.set_offset(offset);
         self
     }
 
-    fn contains_class(&self, target: &str) -> bool {
+    pub fn contains_class(&self, target: &str) -> bool {
         for class in self.get_classes() {
             if class == target {
                 return true;
             }
         }
 
-        return false
+        return false;
     }
 
-    fn get_bounding_box(&self) -> BoundingBox {
+    pub fn get_bounding_box(&self) -> BoundingBox {
         BoundingBox::from_size(self.offset, self.inner.get_size())
     }
 
-    fn on_click(&mut self, callback: fn (pos: Vec2) -> E) -> CallbackId {
-        self.click_callbacks.push(callback);
+    pub fn remove_handler(&mut self, id: HandlerId) {
+        self.handlers.remove_handler(id);
     }
 
-    fn on_key_event(&mut self, ev: KeyEvent) -> CallbackId;
-    fn remove_callback(&mut self, id: CallbackId) {
-        match id.ty {
-            CallbackType::Click => self.click_callbacks.remove(id.idx),
+    pub(crate) fn subscribed(&self, signal: &SignalId) -> bool {
+        self.subscriptions.contains(signal)
+    }
+
+    pub fn intersects(&self, target: IVec2) -> bool {
+        match self.inner {
+            ElementInner::Body(_) => true,
+            _ => self.get_bounding_box().intersects(target)
         }
     }
 }
 
 pub enum ElementInner {
     Body(Body),
+    Icon(Icon),
 }
 
 impl ElementInner {
-    fn draw(&self) -> Vec<Vec<bool>> {
-
+    fn draw(&self) -> (Vec<bool>, UVec2) {
+        match self {
+            ElementInner::Body(_body) => (Vec::new(), UVec2::default()),
+            ElementInner::Icon(icon) => icon.draw(),
+        }
     }
-}
 
-pub struct Properties {
-    hidden: bool,
-    offset: Vec2,
-}
+    fn get_size(&self) -> UVec2 {
+        use ElementInner as EI;
 
-impl Default for Properties {
-    fn default() -> Self {
-        Self {
-            hidden: false,
-            offset: Vec2::default(),
+        match self {
+            EI::Body(_) => UVec2::default(),
+            EI::Icon(icon) => icon.get_size(),
+        }
+    }
+
+    fn update(&mut self, ev: &Event) {
+        use ElementInner as EI;
+
+        match self {
+            EI::Body(_) => {}
+            EI::Icon(_) => {}
         }
     }
 }
 
-pub struct CallbackId {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HandlerId {
     ty: CallbackType,
     idx: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CallbackType {
     Click,
-    KeyEvent,
+    Key,
+    MouseMove,
+}
+
+struct Handlers {
+    mouse_handlers: Vec<Rc<dyn Fn(&mut Element, MouseEvent)>>,
+    mouse_move_handlers: Vec<Rc<dyn Fn(&mut Element, MouseMoveEvent)>>,
+    key_handlers: Vec<Rc<dyn Fn(&mut Element, KeyEvent)>>,
+}
+
+impl Handlers {
+    fn handle(&self, event: Event) -> Vec< {
+        match event {
+            Event::Key(ev) => self.key_handlers.iter().clone(),
+            Event::Mouse(ev) => self
+                .mouse_handlers
+                .clone(),
+            Event::MouseMove(ev) => self
+                .mouse_move_handlers
+                .clone(),
+        }
+    }
+
+    fn remove_handler(&mut self, id: HandlerId) {
+        match id.ty {
+            CallbackType::Click => {
+                self.mouse_handlers.remove(id.idx);
+            }
+            CallbackType::MouseMove => {
+                self.mouse_move_handlers.remove(id.idx);
+            }
+            CallbackType::Key => {
+                self.key_handlers.remove(id.idx);
+            }
+        }
+    }
 }
