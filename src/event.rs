@@ -14,23 +14,24 @@ pub enum Event {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyEvent {
-    key: PhysicalKey,
-    modifiers: Modifiers,
-    state: ElementState,
-    repeat: bool,
+    pub key: PhysicalKey,
+    pub modifiers: Modifiers,
+    pub state: ElementState,
+    pub repeat: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MouseEvent {
-    pos: IVec2,
-    modifiers: Modifiers,
+    pub pos: IVec2,
+    pub modifiers: Modifiers,
+    pub state: ElementState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MouseMoveEvent {
-    pos: IVec2,
-    modifiers: Modifiers,
-    delta: IVec2,
+    pub pos: IVec2,
+    pub modifiers: Modifiers,
+    pub delta: IVec2,
 }
 
 impl MouseMoveEvent {}
