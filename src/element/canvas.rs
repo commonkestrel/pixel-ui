@@ -1,11 +1,29 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::util::{BoundingBox, UVec2};
+use crate::util::{self, BoundingBox, UVec2};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Canvas {
     size: UVec2,
     content: Rc<RefCell<Vec<u8>>>,
+}
+
+impl Canvas {
+    pub(crate) fn draw(&self) -> (Vec<bool>, UVec2) {
+        let buf = util::u8_to_bool_vec(&self.content.borrow());
+        (buf, self.size)
+    }
+
+    pub fn get_size(&self) -> UVec2 {
+        self.size
+    }
+
+    pub fn get_context(&self) -> DrawContext {
+        DrawContext {
+            size: self.size,
+            content: self.content.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
