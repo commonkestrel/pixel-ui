@@ -1,18 +1,19 @@
-pub mod body;
 pub mod button;
 pub mod canvas;
 pub mod icon;
-pub mod span;
 pub mod text;
 
 use std::rc::Rc;
 
-use body::Body;
+use button::Button;
+use canvas::Canvas;
 use icon::Icon;
+use slotmap::{new_key_type, SlotMap};
 
+use crate::app::{Application, ElementId};
 use crate::draw;
 use crate::event::{Event, KeyEvent, MouseEvent, MouseMoveEvent};
-use crate::signal::SignalId;
+use crate::react::SignalId;
 use crate::util::{BoundingBox, IVec2, UVec2};
 
 pub struct Element {
@@ -56,28 +57,8 @@ impl Element {
         }
     }
 
-    pub(crate) fn update(&mut self, event: Event) {
+    pub(crate) fn handle(&mut self, event: Event) {
         self.inner.update(&event);
-        match event {
-            Event::Key(ev) => self
-                .handlers
-                .key_handlers
-                .clone()
-                .into_iter()
-                .for_each(|handler| handler(self, ev)),
-            Event::Mouse(ev) => self
-                .handlers
-                .mouse_handlers
-                .clone()
-                .into_iter()
-                .for_each(|handler| handler(self, ev)),
-            Event::MouseMove(ev) => self
-                .handlers
-                .mouse_move_handlers
-                .clone()
-                .into_iter()
-                .for_each(|handler| handler(self, ev)),
-        }
     }
 
     pub fn set_hidden(&mut self, hidden: bool) {
@@ -117,22 +98,23 @@ impl Element {
 
     pub fn intersects(&self, target: IVec2) -> bool {
         match self.inner {
-            ElementInner::Body(_) => true,
             _ => self.get_bounding_box().intersects(target),
         }
     }
 }
 
 pub enum ElementInner {
-    Body(Body),
     Icon(Icon),
+    Canvas(Canvas),
+    Button(Button),
 }
 
 impl ElementInner {
     fn draw(&self) -> (Vec<bool>, UVec2) {
         match self {
-            ElementInner::Body(_body) => (Vec::new(), UVec2::default()),
-            ElementInner::Icon(icon) => icon.draw(),
+            ElementInner::Icon(ico) => ico.draw(),
+            ElementInner::Canvas(cv) => cv.draw(),
+            ElementInner::Button(but) => but.draw(),
         }
     }
 
@@ -140,8 +122,9 @@ impl ElementInner {
         use ElementInner as EI;
 
         match self {
-            EI::Body(_) => UVec2::default(),
-            EI::Icon(icon) => icon.get_size(),
+            EI::Icon(ico) => ico.get_size(),
+            EI::Canvas(cv) => cv.get_size(),
+            EI::Button(but) => but.get_size(),
         }
     }
 
@@ -149,44 +132,46 @@ impl ElementInner {
         use ElementInner as EI;
 
         match self {
-            EI::Body(_) => {}
-            EI::Icon(_) => {}
+            EI::Button(but) => but.update(ev),
+            _ => {}
         }
     }
 }
 
+// The key types stay private to avoid undefined behavior,
+// since [`Key`](`slotmap::Key`) types can be crafted from unknown [`u64`]'s.
+/// A reference to an event handler registered to an [`Element`] or [`Application`](`crate::app::Application`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HandlerId {
-    ty: CallbackType,
-    idx: usize,
+pub enum HandlerId {
+    Mouse(MouseId),
+    Key(KeyId),
+    MouseMove(MouseMoveId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CallbackType {
-    Click,
-    Key,
-    MouseMove,
+new_key_type! {
+    struct MouseId;
+    struct MouseMoveId;
+    struct KeyId;
 }
 
 struct Handlers {
-    mouse_handlers: Vec<Rc<dyn Fn(&mut Element, MouseEvent)>>,
-    mouse_move_handlers: Vec<Rc<dyn Fn(&mut Element, MouseMoveEvent)>>,
-    key_handlers: Vec<Rc<dyn Fn(&mut Element, KeyEvent)>>,
+    mouse_handlers: SlotMap<MouseId, Rc<dyn Fn(&mut Application, ElementId, MouseEvent)>>,
+    mouse_move_handlers: SlotMap<MouseMoveId, Rc<dyn Fn(&mut Application, ElementId, MouseMoveEvent)>>,
+    key_handlers: SlotMap<KeyId, Rc<dyn Fn(&mut Application, ElementId, KeyEvent)>>,
 }
 
 impl Handlers {
-    fn handle(&self, event: Event) {}
 
     fn remove_handler(&mut self, id: HandlerId) {
-        match id.ty {
-            CallbackType::Click => {
-                self.mouse_handlers.remove(id.idx);
+        match id {
+            HandlerId::Mouse(id) => {
+                self.mouse_handlers.remove(id);
             }
-            CallbackType::MouseMove => {
-                self.mouse_move_handlers.remove(id.idx);
+            HandlerId::MouseMove(id) => {
+                self.mouse_move_handlers.remove(id);
             }
-            CallbackType::Key => {
-                self.key_handlers.remove(id.idx);
+            HandlerId::Key(id) => {
+                self.key_handlers.remove(id);
             }
         }
     }

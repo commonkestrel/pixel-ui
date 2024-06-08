@@ -6,5 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4.38"
+slotmap = "1.0.7"
 softbuffer = "0.4.3"
+timer = "0.2.0"
 winit = "0.30"
