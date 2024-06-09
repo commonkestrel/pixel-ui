@@ -9,12 +9,22 @@ pub struct Button {
 }
 
 impl Button {
+    const DEFAULT_BORDER_THICKNESS: usize = 2;
+
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            size: UVec2::new(width, height),
+            border_thickness: Self::DEFAULT_BORDER_THICKNESS,
+            depressed: false,
+        }
+    }
+
     pub fn get_size(&self) -> UVec2 {
         self.size
     }
 
     pub(crate) fn draw(&self) -> (Vec<bool>, UVec2) {
-        todo!();
+        (Vec::new(), UVec2::default())
     }
 
     pub fn update(&mut self, ev: &Event) {

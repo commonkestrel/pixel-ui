@@ -22,13 +22,30 @@ pub struct Element {
     hidden: bool,
     offset: IVec2,
     z_index: usize,
-    handlers: Handlers,
+    pub(crate) handlers: Handlers,
     subscriptions: Vec<SignalId>,
 }
 
 impl Element {
+    pub fn new<E: Into<ElementInner>>(element: E) -> Self {
+        Self {
+            inner: element.into(),
+            classes: Vec::new(),
+            hidden: false,
+            offset: IVec2::default(),
+            z_index: 0,
+            handlers: Handlers::default(),
+            subscriptions: Vec::new(),
+        }
+    }
+
     pub fn append_class(&mut self, class: String) {
         self.classes.push(class);
+    }
+
+    pub fn with_class(mut self, class: String) -> Self {
+        self.append_class(class);
+        self
     }
 
     pub fn get_classes(&self) -> &[String] {
@@ -43,7 +60,7 @@ impl Element {
         self.z_index = z_index;
     }
 
-    fn draw(&self, buf: &mut [bool], width: usize, height: usize) {
+    pub(crate) fn draw(&self, buf: &mut [bool], width: usize, height: usize) {
         if !self.hidden {
             let (graphic, size) = self.inner.draw();
 
@@ -101,6 +118,27 @@ impl Element {
             _ => self.get_bounding_box().intersects(target),
         }
     }
+
+    pub fn on_click(&mut self, f: impl Fn(&mut Application, ElementId, MouseEvent) + 'static) -> HandlerId {
+        let id = self.handlers.mouse_handlers.insert(Rc::new(f));
+        HandlerId::Mouse(id)
+    }
+}
+impl From<Canvas> for Element {
+    fn from(value: Canvas) -> Self {
+        Element::new(value)
+    }
+}
+impl From<Icon> for Element {
+    fn from(value: Icon) -> Self {
+        Element::new(value)
+    }
+}
+
+impl From<Button> for Element {
+    fn from(value: Button) -> Self {
+        Element::new(value)
+    }
 }
 
 pub enum ElementInner {
@@ -111,7 +149,7 @@ pub enum ElementInner {
 
 impl ElementInner {
     fn draw(&self) -> (Vec<bool>, UVec2) {
-        match self {
+        match self { 
             ElementInner::Icon(ico) => ico.draw(),
             ElementInner::Canvas(cv) => cv.draw(),
             ElementInner::Button(but) => but.draw(),
@@ -138,8 +176,27 @@ impl ElementInner {
     }
 }
 
+impl From<Canvas> for ElementInner {
+    fn from(value: Canvas) -> Self {
+        ElementInner::Canvas(value)
+    }
+}
+
+impl From<Icon> for ElementInner {
+    fn from(value: Icon) -> Self {
+        ElementInner::Icon(value)
+    }
+}
+
+impl From<Button> for ElementInner {
+    fn from(value: Button) -> Self {
+        ElementInner::Button(value)
+    }
+}
+
 // The key types stay private to avoid undefined behavior,
 // since [`Key`](`slotmap::Key`) types can be crafted from unknown [`u64`]'s.
+#[allow(private_interfaces)]
 /// A reference to an event handler registered to an [`Element`] or [`Application`](`crate::app::Application`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandlerId {
@@ -149,15 +206,15 @@ pub enum HandlerId {
 }
 
 new_key_type! {
-    struct MouseId;
-    struct MouseMoveId;
-    struct KeyId;
+    pub(crate) struct MouseId;
+    pub(crate) struct MouseMoveId;
+    pub(crate) struct KeyId;
 }
 
-struct Handlers {
-    mouse_handlers: SlotMap<MouseId, Rc<dyn Fn(&mut Application, ElementId, MouseEvent)>>,
-    mouse_move_handlers: SlotMap<MouseMoveId, Rc<dyn Fn(&mut Application, ElementId, MouseMoveEvent)>>,
-    key_handlers: SlotMap<KeyId, Rc<dyn Fn(&mut Application, ElementId, KeyEvent)>>,
+pub(crate) struct Handlers {
+    pub(crate) mouse_handlers: SlotMap<MouseId, Rc<dyn Fn(&mut Application, ElementId, MouseEvent)>>,
+    pub(crate) mouse_move_handlers: SlotMap<MouseMoveId, Rc<dyn Fn(&mut Application, ElementId, MouseMoveEvent)>>,
+    pub(crate) key_handlers: SlotMap<KeyId, Rc<dyn Fn(&mut Application, ElementId, KeyEvent)>>,
 }
 
 impl Handlers {
@@ -173,6 +230,16 @@ impl Handlers {
             HandlerId::Key(id) => {
                 self.key_handlers.remove(id);
             }
+        }
+    }
+}
+
+impl Default for Handlers {
+    fn default() -> Self {
+        Self {
+            mouse_handlers: SlotMap::with_key(),
+            mouse_move_handlers: SlotMap::with_key(),
+            key_handlers: SlotMap::with_key(),
         }
     }
 }

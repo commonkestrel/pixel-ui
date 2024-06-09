@@ -1,5 +1,5 @@
 use winit::{
-    event::{ElementState, Modifiers},
+    event::{ElementState, Modifiers, MouseButton},
     keyboard::PhysicalKey,
 };
 
@@ -25,6 +25,7 @@ pub struct MouseEvent {
     pub pos: IVec2,
     pub modifiers: Modifiers,
     pub state: ElementState,
+    pub button: MouseButton,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

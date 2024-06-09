@@ -10,6 +10,7 @@ pub mod prelude {
     pub use super::react::{WriteSignal, ReadSignal};
     pub use super::event::*;
     pub use super::element::{
+        Element,
         canvas::Canvas,
         text::Text,
         icon::Icon,
