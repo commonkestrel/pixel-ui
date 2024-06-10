@@ -2,12 +2,14 @@ pub mod draw;
 pub mod element;
 pub mod event;
 pub mod react;
-pub mod util;
+pub mod color;
 pub mod app;
+mod util;
 
 pub mod prelude {
     pub use super::app::{Application, ApplicationBuilder};
     pub use super::react::{WriteSignal, ReadSignal};
+    pub use super::color::Color;
     pub use super::event::*;
     pub use super::element::{
         Element,
@@ -15,6 +17,7 @@ pub mod prelude {
         text::Text,
         icon::Icon,
         button::Button,
+        rect::Rect,
     };
 }
 
