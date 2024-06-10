@@ -7,6 +7,7 @@ use crate::util::{IVec2, UVec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
+    Resize(ResizeEvent),
     Mouse(MouseEvent),
     Key(KeyEvent),
     MouseMove(MouseMoveEvent),
@@ -35,4 +36,7 @@ pub struct MouseMoveEvent {
     pub delta: IVec2,
 }
 
-impl MouseMoveEvent {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResizeEvent {
+    pub size: UVec2,
+}
