@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::util::{self, BoundingBox, UVec2};
+use crate::{color::Color, util::{self, BoundingBox, UVec2}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Canvas {
@@ -9,8 +9,21 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    pub(crate) fn draw(&self) -> (Vec<bool>, UVec2) {
-        let buf = util::u8_to_bool_vec(&self.content.borrow());
+    pub(crate) fn draw(&self) -> (Vec<Color>, UVec2) {
+        #[cfg(all(feature = "single-color", not(feature = "grayscale")))]
+        let buf = {
+            let buf = util::u8_to_bool_vec(&self.content.borrow());
+            // SAFETY: layout must be the same with repr(transparent)
+            unsafe { std::mem::transmute(buf) }
+        };
+
+        #[cfg(feature = "grayscale")]
+        let buf = {
+            let buf = self.content.borrow().clone();
+            // SAFETY: layout must be the same with repr(transparent)
+            unsafe { std::mem::transmute(buf) }
+        };
+
         (buf, self.size)
     }
 

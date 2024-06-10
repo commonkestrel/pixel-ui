@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{Cursor, Seek, SeekFrom};
 use std::path::Path;
 
+use crate::color::Color;
 use crate::util::UVec2;
 
 const DIB_HEADER_OFFSET: u64 = 14;
@@ -24,10 +25,8 @@ impl Icon {
         self.size
     }
 
-    pub fn draw(&self) -> (Vec<bool>, UVec2) {
-        let buf = crate::util::u8_to_bool_vec(&self.content);
-
-        (buf, self.size)
+    pub fn draw(&self) -> (Vec<Color>, UVec2) {
+        todo!();
     }
 }
 

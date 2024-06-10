@@ -2,18 +2,20 @@ pub mod button;
 pub mod canvas;
 pub mod icon;
 pub mod text;
+pub mod rect;
 
 use std::rc::Rc;
-
 use button::Button;
 use canvas::Canvas;
 use icon::Icon;
+use rect::Rect;
 use slotmap::{new_key_type, SlotMap};
 
-use crate::app::{Application, ElementId};
+use crate::app::{Application, ElementId, KeyId, MouseId, MouseMoveId, RehydrateId, ResizeId};
 use crate::draw;
+use crate::color::Color;
 use crate::event::{Event, KeyEvent, MouseEvent, MouseMoveEvent};
-use crate::react::SignalId;
+use crate::prelude::ResizeEvent;
 use crate::util::{BoundingBox, IVec2, UVec2};
 
 pub struct Element {
@@ -23,7 +25,6 @@ pub struct Element {
     offset: IVec2,
     z_index: usize,
     pub(crate) handlers: Handlers,
-    subscriptions: Vec<SignalId>,
 }
 
 impl Element {
@@ -35,8 +36,15 @@ impl Element {
             offset: IVec2::default(),
             z_index: 0,
             handlers: Handlers::default(),
-            subscriptions: Vec::new(),
         }
+    }
+
+    pub fn button(width: usize, height: usize, color: Color) -> Element {
+        Element::new(Button::new(width, height, color))
+    }
+
+    pub fn rect(width: usize, height: usize, color: Color) -> Element {
+        Element::new(Rect::new(width, height, color))
     }
 
     pub fn append_class(&mut self, class: String) {
@@ -60,7 +68,7 @@ impl Element {
         self.z_index = z_index;
     }
 
-    pub(crate) fn draw(&self, buf: &mut [bool], width: usize, height: usize) {
+    pub(crate) fn draw(&self, buf: &mut [Color], width: usize, height: usize) {
         if !self.hidden {
             let (graphic, size) = self.inner.draw();
 
@@ -74,7 +82,7 @@ impl Element {
         }
     }
 
-    pub(crate) fn handle(&mut self, event: Event) {
+    pub(crate) fn update(&mut self, event: Event) {
         self.inner.update(&event);
     }
 
@@ -82,12 +90,12 @@ impl Element {
         self.hidden = hidden;
     }
 
-    pub fn set_offset(&mut self, offset: IVec2) {
-        self.offset = offset;
+    pub fn set_offset(&mut self, x: isize, y: isize) {
+        self.offset = IVec2::new(x, y);
     }
 
-    pub fn with_offset(mut self, offset: IVec2) -> Self {
-        self.set_offset(offset);
+    pub fn with_offset(mut self, x: isize, y: isize) -> Self {
+        self.set_offset(x, y);
         self
     }
 
@@ -109,10 +117,6 @@ impl Element {
         self.handlers.remove_handler(id);
     }
 
-    pub(crate) fn subscribed(&self, signal: &SignalId) -> bool {
-        self.subscriptions.contains(signal)
-    }
-
     pub fn intersects(&self, target: IVec2) -> bool {
         match self.inner {
             _ => self.get_bounding_box().intersects(target),
@@ -122,6 +126,16 @@ impl Element {
     pub fn on_click(&mut self, f: impl Fn(&mut Application, ElementId, MouseEvent) + 'static) -> HandlerId {
         let id = self.handlers.mouse_handlers.insert(Rc::new(f));
         HandlerId::Mouse(id)
+    }
+
+    pub fn on_rehydrate(&mut self, f: impl Fn(&mut Application, ElementId) + 'static) -> HandlerId {
+        let id = self.handlers.rehydrate_handlers.insert(Rc::new(f));
+        HandlerId::Rehydrate(id)
+    }
+
+    pub fn on_resize(&mut self, f: impl Fn(&mut Application, ElementId, ResizeEvent) + 'static) -> HandlerId {
+        let id = self.handlers.resize_handlers.insert(Rc::new(f));
+        HandlerId::Resize(id)
     }
 }
 impl From<Canvas> for Element {
@@ -145,14 +159,16 @@ pub enum ElementInner {
     Icon(Icon),
     Canvas(Canvas),
     Button(Button),
+    Rect(Rect),
 }
 
 impl ElementInner {
-    fn draw(&self) -> (Vec<bool>, UVec2) {
+    fn draw(&self) -> (Vec<Color>, UVec2) {
         match self { 
             ElementInner::Icon(ico) => ico.draw(),
             ElementInner::Canvas(cv) => cv.draw(),
             ElementInner::Button(but) => but.draw(),
+            ElementInner::Rect(rec) => rec.draw(),
         }
     }
 
@@ -163,6 +179,7 @@ impl ElementInner {
             EI::Icon(ico) => ico.get_size(),
             EI::Canvas(cv) => cv.get_size(),
             EI::Button(but) => but.get_size(),
+            EI::Rect(rec) => rec.get_size(),
         }
     }
 
@@ -194,6 +211,12 @@ impl From<Button> for ElementInner {
     }
 }
 
+impl From<Rect> for ElementInner {
+    fn from(value: Rect) -> Self {
+        ElementInner::Rect(value)
+    }
+}
+
 // The key types stay private to avoid undefined behavior,
 // since [`Key`](`slotmap::Key`) types can be crafted from unknown [`u64`]'s.
 #[allow(private_interfaces)]
@@ -203,18 +226,16 @@ pub enum HandlerId {
     Mouse(MouseId),
     Key(KeyId),
     MouseMove(MouseMoveId),
-}
-
-new_key_type! {
-    pub(crate) struct MouseId;
-    pub(crate) struct MouseMoveId;
-    pub(crate) struct KeyId;
+    Rehydrate(RehydrateId),
+    Resize(ResizeId)
 }
 
 pub(crate) struct Handlers {
     pub(crate) mouse_handlers: SlotMap<MouseId, Rc<dyn Fn(&mut Application, ElementId, MouseEvent)>>,
     pub(crate) mouse_move_handlers: SlotMap<MouseMoveId, Rc<dyn Fn(&mut Application, ElementId, MouseMoveEvent)>>,
     pub(crate) key_handlers: SlotMap<KeyId, Rc<dyn Fn(&mut Application, ElementId, KeyEvent)>>,
+    pub(crate) rehydrate_handlers: SlotMap<RehydrateId, Rc<dyn Fn(&mut Application, ElementId)>>,
+    pub(crate) resize_handlers: SlotMap<ResizeId, Rc<dyn Fn(&mut Application, ElementId, ResizeEvent)>>,
 }
 
 impl Handlers {
@@ -230,6 +251,12 @@ impl Handlers {
             HandlerId::Key(id) => {
                 self.key_handlers.remove(id);
             }
+            HandlerId::Rehydrate(id) => {
+                self.rehydrate_handlers.remove(id);
+            }
+            HandlerId::Resize(id) => {
+                self.resize_handlers.remove(id);
+            }
         }
     }
 }
@@ -240,6 +267,8 @@ impl Default for Handlers {
             mouse_handlers: SlotMap::with_key(),
             mouse_move_handlers: SlotMap::with_key(),
             key_handlers: SlotMap::with_key(),
+            rehydrate_handlers: SlotMap::with_key(),
+            resize_handlers: SlotMap::with_key(),
         }
     }
 }

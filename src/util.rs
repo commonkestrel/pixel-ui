@@ -86,6 +86,18 @@ impl ops::Add for IVec2 {
     }
 }
 
+impl ops::Sub for IVec2 {
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
 impl ops::Add<UVec2> for IVec2 {
     type Output = Self;
 
@@ -112,9 +124,13 @@ impl BoundingBox {
     }
 
     pub fn from_size(origin: IVec2, size: UVec2) -> Self {
+        let max_x = origin.x + size.x as isize;
+        let max_y = origin.y + size.y as isize;
+
+        let max = IVec2::new(max_x, max_y);
         Self {
             min: origin,
-            max: origin + size,
+            max,
         }
     }
 
@@ -127,8 +143,8 @@ impl BoundingBox {
     }
 
     pub fn intersects(&self, target: IVec2) -> bool {
-        let greater = self.min.x >= target.x && self.min.y >= target.y;
-        let less = self.max.x <= target.x && self.max.y <= target.y;
+        let greater = self.min.x <= target.x && self.min.y <= target.y;
+        let less = self.max.x >= target.x && self.max.y >= target.y;
 
         return greater && less;
     }
@@ -143,11 +159,19 @@ impl BoundingBox {
     pub fn area(&self) -> usize {
         self.size().area()
     }
+
+    pub fn width(&self) -> usize {
+        (self.max.x - self.min.x).unsigned_abs()
+    }
+
+    pub fn height(&self) -> usize {
+        (self.max.y - self.min.y).unsigned_abs()
+    }
 }
 
 pub fn u8_to_bool_vec(content: &[u8]) -> Vec<bool> {
     let mut buf = Vec::with_capacity(content.len() * 8);
-    for (i, byte) in content.iter().enumerate() {
+    for byte in content {
         for bit in 0..8 {
             let value = (byte >> bit) & 0x01;
             // SAFETY: It is assured that `value` is either 0 or 1

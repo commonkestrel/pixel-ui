@@ -1,4 +1,4 @@
-use crate::util::{BoundingBox, IVec2};
+use crate::{color::Color, util::{BoundingBox, IVec2}};
 
 pub fn write(buf: &mut [bool], width: usize, height: usize, position: IVec2, input: bool) {
     if position.x >= 0 && position.y >= 0 {
@@ -12,14 +12,18 @@ pub fn write(buf: &mut [bool], width: usize, height: usize, position: IVec2, inp
 }
 
 pub fn write_all(
-    buf: &mut [bool],
+    buf: &mut [Color],
     width: usize,
     height: usize,
     bounds: BoundingBox,
-    content: Vec<bool>,
+    content: Vec<Color>,
 ) {
     // If either max is negative, we can just assume the whole contents are out of frame
     if bounds.get_max().x < 0 || bounds.get_max().y < 0 {
+        return;
+    }
+
+    if bounds.get_min().x >= width as isize || bounds.get_min().y >= height as isize {
         return;
     }
 
@@ -27,14 +31,22 @@ pub fn write_all(
         return;
     }
 
-    let left_blank = (-bounds.get_min().x).max(0);
-    let top_blank = (-bounds.get_min().y).max(0);
+    let min_x = bounds.get_min().x.max(0) as usize;
+    let min_y = bounds.get_min().y.max(0) as usize;
+    let blank_x = (-bounds.get_min().x).max(0) as usize;
+    let blank_y = (-bounds.get_min().y).max(0) as usize;
 
-    let max_x = (bounds.get_max().x as usize).min(width);
-    let max_y = (bounds.get_max().y as usize).min(height);
+    let max_x = ((bounds.get_max().x) as usize).min(width-1);
+    let max_y = ((bounds.get_max().y) as usize).min(height-1);
 
-    for x in 0..max_x {
-        for y in 0..max_y {}
+    for x in 0..(max_x-min_x) {
+        for y in 0..(max_y-min_y) {
+
+            let buffer_idx = (y+min_y)*width + (x+min_x);
+            let content_idx = (y+blank_y)*bounds.width() + (x+blank_x);
+
+            buf[buffer_idx] = content[content_idx];
+        }
     }
 }
 
