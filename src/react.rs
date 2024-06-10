@@ -17,9 +17,18 @@ new_key_type! {
 pub(crate) struct Context {
     event_loop: EventLoopProxy<ProxyEvent>,
     timer: Timer,
-    signals: SlotMap<SignalId, Node>,
-    timeouts: SlotMap<TimeoutId, Timeout>,
-    intervals: SlotMap<IntervalId, Interval>,
+    signals: SlotMap<SignalId, Box<dyn Any>>,
+    pub(crate) timeouts: SlotMap<TimeoutId, Timeout>,
+    pub(crate) intervals: SlotMap<IntervalId, Interval>,
+    clean: bool,
+}
+
+/// A trait used so that both [`ApplicationBuilder`](`crate::app::ApplicationBuilder`)
+/// and [`Application`](`crate::app::Application`) can be used with signals.
+pub(crate) trait Ctx {
+    // Keep Context private so that Ctx cannot be implemented on any external types.
+    fn get_ctx(&self) -> &Context;
+    fn get_ctx_mut(&mut self) -> &mut Context;
 }
 
 impl Context {
@@ -30,18 +39,19 @@ impl Context {
             signals: SlotMap::with_key(),
             timeouts: SlotMap::with_key(),
             intervals: SlotMap::with_key(),
+            clean: true,
         }
     }
 
-    pub fn create_signal<T: Any + 'static>(&mut self, init: T) -> (WriteSignal<T>, ReadSignal<T>) {
-        let content = Rc::new(RefCell::new(init)) as Rc<RefCell<dyn Any>>;
-        let node = Node {
-            signal: content,
-            state: SignalState::Clean,
-        };
-        let id = self.signals.insert(node);
+    pub(crate) fn clean(&mut self) {
+        self.clean = true;
+    }
 
-        (WriteSignal::new(id), ReadSignal::new(id))
+    pub fn create_signal<T: Any + 'static>(&mut self, init: T) -> (ReadSignal<T>, WriteSignal<T>) {
+        let content = Box::new(init) as Box<dyn Any>;
+        let id = self.signals.insert(content);
+
+        (ReadSignal::new(id), WriteSignal::new(id))
     }
 
     pub fn set_timeout(&mut self, delay: TimeDelta, f: impl FnOnce(&mut Application) + 'static) -> TimeoutId {
@@ -53,8 +63,8 @@ impl Context {
             });
 
             Timeout {
-                handle,
                 f: Box::new(f),
+                __guard: handle,
             }
         })
     }
@@ -72,8 +82,8 @@ impl Context {
             });
 
             Interval {
-                handle,
-                f: Box::new(f),
+                f: Rc::new(f),
+                __guard: handle,
             }
         })
     }
@@ -82,27 +92,21 @@ impl Context {
         let _ = self.intervals.remove(id);
     }
 
-    fn try_with<T: 'static, U>(&self, id: SignalId, f: impl FnOnce(&T) -> U) -> U {
+    fn try_with<T: 'static, R>(&self, id: SignalId, f: impl FnOnce(&T) -> R) -> R {
         f(self.signals
             .get(id)
             .expect("signal id should still exist")
-            .signal
-            .borrow()
             .downcast_ref::<T>()
             .expect("should be able to downcast signal type"))
     }
+    
+    pub fn update<T: 'static>(&mut self, id: SignalId, f: impl FnOnce(&mut T)) {
+        f(self.signals[id].downcast_mut().expect("should be able to downcast signal type"));
 
-    fn get_value(&self, id: SignalId) -> Option<Rc<RefCell<dyn Any>>> {
-        self.signals
-            .get(id)
-            .map(|node| node.signal.clone())
-    }
-
-    pub fn update<T: 'static>(&self, id: SignalId, f: impl FnOnce(&T) -> T) {
-        let mut value = self.signals[id].signal.borrow_mut();
-
-        let update = f(value.downcast_ref().expect("should be able to downcast signal type"));
-        *value.downcast_mut().expect("should be able to downcast signal type") = update;
+        if self.clean {
+            self.clean = false;
+            self.event_loop.send_event(ProxyEvent::React).expect("event loop should still be active");
+        }
     }
 }
 
@@ -110,16 +114,7 @@ impl Context {
 pub(crate) enum ProxyEvent {
     Timeout(TimeoutId),
     Interval(IntervalId),
-}
-
-struct Node {
-    signal: Rc<RefCell<dyn Any>>,
-    state: SignalState,
-}
-
-pub(crate) enum SignalState {
-    Clean,
-    Dirty,
+    React,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,8 +133,12 @@ impl<T> WriteSignal<T> {
 }
 
 impl <T: 'static> WriteSignal<T> {
-    pub fn set(&self, ctx: &Context, data: T) {
-        ctx.update(self.id, |_| data);
+    pub fn set<A: Ctx>(&self, app: &mut A, data: T) {
+        app.get_ctx_mut().update(self.id, |sig| *sig = data);
+    }
+
+    pub fn update<A: Ctx>(&self, app: &mut A, f: impl FnOnce(&mut T)) {
+        app.get_ctx_mut().update(self.id, f);
     }
 }
 
@@ -159,17 +158,21 @@ impl<T> ReadSignal<T> {
 }
 
 impl<T: Clone + 'static> ReadSignal<T> {
-    pub fn get(&self, ctx: &Context) -> T {
-        ctx.try_with(self.id, T::clone)
+    pub fn get<A: Ctx>(&self, app: &A) -> T {
+        app.get_ctx().try_with(self.id, T::clone)
+    }
+
+    pub fn with<A: Ctx, R>(&self, app: &A, f: impl FnOnce(&T) -> R) -> R {
+        app.get_ctx().try_with(self.id, f)
     }
 }
 
-struct Timeout {
-    f: Box<dyn FnOnce(&mut Application) + 'static>,
-    handle: Guard,
+pub(crate) struct Timeout {
+    pub(crate) f: Box<dyn FnOnce(&mut Application) + 'static>,
+    __guard: Guard,
 }
 
-struct Interval {
-    f: Box<dyn Fn(&mut Application) + 'static>,
-    handle: Guard,
+pub(crate) struct Interval {
+    pub(crate) f: Rc<dyn Fn(&mut Application) + 'static>,
+    __guard: Guard,
 }
